@@ -1,3 +1,4 @@
+
 import argparse
 import os
 
@@ -15,6 +16,7 @@ from PIL import Image
 from attrdict import AttrDict
 import yaml
 
+import chardet#检测文件编码
 
 def img_pre_pros(img_path, image_size):
     pil_image = Image.open(img_path).resize((image_size, image_size))
@@ -70,15 +72,27 @@ def main():
     logger.log("sampling...")
     noise = None
 
+
+    # 检测编码函数
+    def detect_encoding(file_path):
+        with open(file_path, 'rb') as f:
+            result = chardet.detect(f.read())
+        return result['encoding']
+
+    # 检测文件编码
+    encoding_total = detect_encoding(total_txt_file)
+    encoding_gen = detect_encoding(gen_txt_file)
+    encoding_path = detect_encoding(cfg.stroke_path)
+
     # gen txt
     char2idx = {}
-    with open(total_txt_file, 'r') as f:
+    with open(total_txt_file, 'r', encoding=encoding_total) as f:
         chars = f.readlines()
         for idx, char in enumerate(chars[0]):
             char2idx[char] = idx
         f.close()
     char_idx = []
-    with open(gen_txt_file, 'r') as f1:
+    with open(gen_txt_file, 'r', encoding=encoding_gen) as f1:
         genchars = f1.readlines()
         for char in genchars[0]:
             char_idx.append(char2idx[char])
@@ -90,6 +104,7 @@ def main():
     ch_idx = 0
     while len(all_images) * cfg.batch_size < cfg.num_samples:
         model_kwargs = {}
+        # 创建 classes 张量在指定设备上
         classes = th.tensor([i for i in char_idx[ch_idx:ch_idx + cfg.batch_size]], device=dist_util.dev())
         ch_idx += cfg.batch_size
 
@@ -97,9 +112,10 @@ def main():
         img = th.tensor(img_pre_pros(sty_img_path, cfg.image_size), requires_grad=False).cuda().repeat(cfg.batch_size, 1, 1, 1)
         sty_feat = model.sty_encoder(img)
         model_kwargs["sty"] = sty_feat
+
         if cfg.stroke_path is not None:
-            chars_stroke = th.empty([0, 32], dtype=th.float32)
-            with open(cfg.stroke_path, 'r') as f:
+            chars_stroke = th.empty([0, 32], dtype=th.float32, device=dist_util.dev())  # 在目标设备上初始化
+            with open(cfg.stroke_path, 'r', encoding=encoding_path) as f:
                 lines = f.readlines()
                 for line in lines:
                     strokes = line.split(" ")[1:-1]
@@ -109,9 +125,10 @@ def main():
                     while len(char_stroke) < 32:  # for korean
                         char_stroke.append(0)
                     assert len(char_stroke) == 32
-                    chars_stroke = th.cat((chars_stroke, th.tensor(char_stroke).reshape([1, 32])), dim=0)
-            f.close()
-            model_kwargs["stroke"] = chars_stroke[classes].to(dist_util.dev())
+                    # 将 char_stroke 移动到与 chars_stroke 相同的设备
+                    chars_stroke = th.cat((chars_stroke, th.tensor(char_stroke, device=dist_util.dev()).reshape([1, 32])), dim=0)
+
+            model_kwargs["stroke"] = chars_stroke[classes]  # classes 应该在同一设备上
         if classifier_free:
             if cfg.stroke_path is not None:
                 model_kwargs["mask_y"] = th.cat([th.zeros([cfg.batch_size], dtype=th.bool), th.ones([cfg.batch_size * 2], dtype=th.bool)]).to(dist_util.dev())
