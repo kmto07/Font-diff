@@ -1,6 +1,6 @@
 import argparse
 from utils import dist_util, logger
-from utils.image_datasets import load_data
+from utils.image_datasets import load_data   #%
 from utils.resample import create_named_schedule_sampler
 from utils.script_util import (
     model_and_diffusion_defaults,
@@ -64,7 +64,7 @@ def main():
 
 
     logger.log("creating data loader...")
-    data = load_data(
+    data = load_data(  #%%
         data_dir=cfg.data_dir,
         batch_size=cfg.batch_size,
         image_size=cfg.image_size,
