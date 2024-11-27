@@ -1,6 +1,8 @@
 import math
 import random
 
+import chardet#加
+
 from PIL import Image
 import blobfile as bf
 from mpi4py import MPI
@@ -8,6 +10,11 @@ import numpy as np
 from torch.utils.data import DataLoader, Dataset
 from . import logger
 
+###加
+def detect_encoding(file_path):
+    with open(file_path, 'rb') as f:
+        result = chardet.detect(f.read())
+    return result['encoding']
 
 def load_data(
     *,
@@ -24,19 +31,25 @@ def load_data(
         raise ValueError("unspecified data directory")
     all_files = _list_image_files_recursively(data_dir)
     chars_stroke = None
+    
+    
     class_names = [bf.basename(path).split("_")[0] for path in all_files]
     sorted_classes = {x: i for i, x in enumerate(sorted(set(class_names)))}
     classes = [sorted_classes[x] for x in class_names]
+    
     sty_class_names = [bf.dirname(path).split("/")[-1] for path in all_files]
     sty_sorted_classes = {x: i for i, x in enumerate(sorted(set(sty_class_names)))}
     sty_classes = [sty_sorted_classes[x] for x in sty_class_names]
+    
+    encoding_path = detect_encoding(stroke_path)#jia
+
     if stroke_path is not None:
         logger.log('=' * 20)
         logger.log("using strokes data")
         logger.log('=' * 20)
 
         chars_stroke = np.empty([0, 32], dtype=np.float32)
-        with open(stroke_path, 'r') as f:
+        with open(stroke_path, 'r',encoding=encoding_path) as f: #加encoding=encoding_path
             lines = f.readlines()
             for line in lines:
                 strokes = line.split(" ")[1:-1]
@@ -49,7 +62,7 @@ def load_data(
                 chars_stroke = np.concatenate([chars_stroke, np.array(char_stroke).reshape([1, 32])], axis=0, dtype=np.float32)
 
     if classifier_free:
-        dataset = ImageDataset_Clsfree(
+        dataset = ImageDataset_Clsfree(  #%
             image_size,
             all_files,
             classes=classes,
@@ -61,7 +74,7 @@ def load_data(
             chars_stroke=chars_stroke,
         )
     else:
-        dataset = ImageDataset(
+        dataset = ImageDataset(  #%
             image_size,
             all_files,
             classes=classes,
@@ -279,3 +292,4 @@ def random_crop_arr(pil_image, image_size, min_crop_frac=0.8, max_crop_frac=1.0)
     crop_y = random.randrange(arr.shape[0] - image_size + 1)
     crop_x = random.randrange(arr.shape[1] - image_size + 1)
     return arr[crop_y : crop_y + image_size, crop_x : crop_x + image_size]
+
