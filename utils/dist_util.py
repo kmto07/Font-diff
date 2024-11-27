@@ -30,11 +30,13 @@ def setup_dist():
     os.environ["MASTER_ADDR"] = comm.bcast(hostname, root=0)
     os.environ["RANK"] = str(comm.rank)
     os.environ["WORLD_SIZE"] = str(comm.size)
+    
+    os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "gloo"
 
     port = comm.bcast(_find_free_port(), root=0)
     os.environ["MASTER_PORT"] = str(port)
-    dist.init_process_group(backend=backend, init_method="env://")
-
+    #dist.init_process_group(backend=backend, init_method="env://?use_libuv=False")
+    dist.init_process_group(backend='gloo', init_method="env://?use_libuv=False")
 
 def dev():
 
@@ -79,3 +81,4 @@ def _find_free_port():
         return s.getsockname()[1]
     finally:
         s.close()
+
